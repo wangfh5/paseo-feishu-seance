@@ -1,5 +1,5 @@
 import type { PluginContext } from "@getpaseo/plugin";
-import { RelayPanel } from "./relay.client";
+import { contributeClient, RelayPanel } from "./relay.client";
 import { relayBind, relayStatus, relayUnbind } from "./relay.shared";
 import { handleBind, handleStatus, handleUnbind, shutdownRelay } from "./relay.server";
 
@@ -7,6 +7,7 @@ export default function contribute(plugin: PluginContext) {
   plugin.handle(relayBind, handleBind);
   plugin.handle(relayUnbind, handleUnbind);
   plugin.handle(relayStatus, handleStatus);
+  plugin.addClientSide(contributeClient);
 
   plugin.addWorkspacePanel({
     id: "relay",

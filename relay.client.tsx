@@ -1,8 +1,70 @@
-import { type PluginAgentPanelProps, useAgent, useRpc } from "@getpaseo/plugin";
+import type { PaseoAgentUpdate } from "@getpaseo/client";
+import {
+  Icon,
+  type PluginAgentPanelProps,
+  type PluginClientContext,
+  type PluginComposerPillProps,
+  useAgent,
+  useRpc,
+} from "@getpaseo/plugin";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import React, { useMemo } from "react";
 import { Pressable, Text, View } from "react-native";
 import { relayBind, relayStatus, relayUnbind } from "./relay.shared";
+
+// 每个 agent 输入框上方的状态胶囊：显示绑定状态，点击即绑定/解绑
+function RelayPill({ theme, agentId }: PluginComposerPillProps) {
+  const getStatus = useRpc(relayStatus);
+  const { data } = useQuery({
+    queryKey: ["feishu-relay", "status"],
+    queryFn: () => getStatus({}),
+    refetchInterval: 5000,
+  });
+  const boundHere = data?.binding?.agentId === agentId;
+  const boundElsewhere = Boolean(data?.binding) && !boundHere;
+  const color = boundHere ? theme.colors.accent : theme.colors.foregroundMuted;
+  const label = boundHere ? "飞书已连接" : boundElsewhere ? "飞书·占用" : "接到飞书";
+  return (
+    <>
+      <Icon name="Send" size={14} color={color} />
+      <Text numberOfLines={1} style={{ color, flexShrink: 1 }}>
+        {label}
+      </Text>
+    </>
+  );
+}
+
+export function contributeClient(client: PluginClientContext) {
+  const pills = new Map<string, () => void>();
+  const unsubscribe = client.paseo.agents.subscribe((update: PaseoAgentUpdate) => {
+    if (update.kind !== "upsert" || !update.agent.workspaceId) return;
+    const { id: agentId, workspaceId } = update.agent;
+    const title = update.agent.title ?? undefined;
+    pills.get(agentId)?.();
+    pills.set(
+      agentId,
+      client.addComposerPill({
+        id: "feishu-relay",
+        title: "飞书中继",
+        workspaceId,
+        agentId,
+        Component: RelayPill,
+        async onPress() {
+          const status = await client.rpc(relayStatus, {});
+          if (status.binding?.agentId === agentId) {
+            await client.rpc(relayUnbind, {});
+          } else {
+            await client.rpc(relayBind, { agentId, title });
+          }
+        },
+      }),
+    );
+  });
+  return () => {
+    unsubscribe();
+    for (const remove of pills.values()) remove();
+  };
+}
 
 export function RelayPanel({ theme, layout, agentId }: PluginAgentPanelProps) {
   const agent = useAgent(agentId, ({ title, status }) => ({ title, status }));
