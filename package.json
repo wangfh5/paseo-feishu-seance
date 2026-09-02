@@ -1,7 +1,7 @@
 {
-  "name": "paseo-feishu-relay",
-  "version": "0.1.0",
-  "description": "Relay a Paseo agent session to a Feishu (Lark) bot — read agent output and send prompts from your phone.",
+  "name": "paseo-feishu-seance",
+  "version": "0.2.0",
+  "description": "Hold a séance for a running Paseo agent — channel it into a Feishu (Lark) bot and keep talking from your phone.",
   "license": "MIT",
   "scripts": {
     "typecheck": "tsc --noEmit"

@@ -16,7 +16,7 @@ const handle = await client.agents.create({
   cwd: "/tmp",
   config: { provider: `${provider}/${model}` },
   prompt: "Reply with exactly one word: PONG",
-  title: "feishu-relay-stream-probe",
+  title: "feishu-seance-stream-probe",
 });
 console.log("agent:", handle.id);
 

@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import type { PaseoAgentStream } from "@getpaseo/client";
 import type { PluginHandlerContext } from "@getpaseo/plugin/server";
 import type { z } from "zod";
-import { relayBind, relayStatus, relayUnbind, type RelayBinding } from "./relay.shared";
+import { seanceBind, seanceStatus, seanceUnbind, type SeanceBinding } from "./seance.shared";
 
 type PaseoApi = PluginHandlerContext["paseo"];
 
@@ -34,12 +34,17 @@ interface FeishuConfig {
   pluginDir: string;
 }
 
-// feishu.config.json 默认放 ~/.paseo/ 下（插件子进程 cwd 是 "/"，不能用相对路径），
-// 也可用 FEISHU_RELAY_CONFIG 指到别处。
+// 配置默认放 ~/.paseo/feishu-seance.config.json（插件子进程 cwd 是 "/"，不能用相对路径），
+// 旧名 feishu-relay.config.json 兜底兼容；也可用 FEISHU_SEANCE_CONFIG 指到别处。
 // 没有配置时进入 dry-run：出站消息只写插件日志，入站长连接不启动。
 const dataDir = join(homedir(), ".paseo");
-const configPath = process.env.FEISHU_RELAY_CONFIG ?? join(dataDir, "feishu-relay.config.json");
-const statePath = join(dirname(configPath), "feishu-relay.state.json");
+const legacyConfigPath = join(dataDir, "feishu-relay.config.json");
+const configPath =
+  process.env.FEISHU_SEANCE_CONFIG ??
+  (existsSync(join(dataDir, "feishu-seance.config.json"))
+    ? join(dataDir, "feishu-seance.config.json")
+    : legacyConfigPath);
+const statePath = join(dirname(configPath), "feishu-seance.state.json");
 
 let config: FeishuConfig | null = null;
 type LarkClient = InstanceType<LarkModule["Client"]>;
@@ -47,7 +52,7 @@ type LarkWSClient = InstanceType<LarkModule["WSClient"]>;
 let larkClient: LarkClient | null = null;
 let wsClient: LarkWSClient | null = null;
 let paseoApi: PaseoApi | null = null;
-let binding: RelayBinding | null = null;
+let binding: SeanceBinding | null = null;
 let unsubscribeTimeline: (() => void) | null = null;
 let forwardedTurns = 0;
 
@@ -56,7 +61,7 @@ let turnTexts = new Map<string, string>();
 let turnToolCalls = 0;
 
 function log(...args: unknown[]) {
-  console.log("[feishu-relay]", ...args);
+  console.log("[feishu-seance]", ...args);
 }
 
 function loadConfig(): FeishuConfig | null {
@@ -69,7 +74,7 @@ function loadConfig(): FeishuConfig | null {
     }
     return raw as FeishuConfig;
   } catch (error) {
-    console.error("[feishu-relay] failed to read config:", error);
+    console.error("[feishu-seance] failed to read config:", error);
     return null;
   }
 }
@@ -78,7 +83,7 @@ function loadState() {
   try {
     if (existsSync(statePath)) {
       const restored = JSON.parse(readFileSync(statePath, "utf8"));
-      // 旧版状态没有 workspaceId，直接作废让用户重绑一次
+      // 缺 workspaceId 的旧格式状态直接作废，让用户重绑一次
       binding = restored?.agentId && restored?.workspaceId ? restored : null;
       if (binding) log("restored binding:", binding);
     }
@@ -91,7 +96,7 @@ function saveState() {
   try {
     writeFileSync(statePath, JSON.stringify(binding));
   } catch (error) {
-    console.error("[feishu-relay] failed to persist state:", error);
+    console.error("[feishu-seance] failed to persist state:", error);
   }
 }
 
@@ -116,7 +121,7 @@ async function sendToFeishu(text: string): Promise<void> {
       },
     });
   } catch (error) {
-    console.error("[feishu-relay] feishu send failed:", error);
+    console.error("[feishu-seance] feishu send failed:", error);
   }
 }
 
@@ -174,7 +179,7 @@ async function forwardToAgent(text: string, imageKeys: string[], messageId: stri
         path: { message_id: messageId, file_key: imageKey },
         params: { type: "image" },
       });
-      const tmp = join(tmpdir(), `feishu-relay-${messageId}-${imageKey}`);
+      const tmp = join(tmpdir(), `feishu-seance-${messageId}-${imageKey}`);
       await res.writeFile(tmp);
       const buf = readFileSync(tmp);
       unlinkSync(tmp);
@@ -185,9 +190,9 @@ async function forwardToAgent(text: string, imageKeys: string[], messageId: stri
     await paseoApi.agents
       .ref(binding.agentId)
       .send(prompt, images.length > 0 ? { images } : undefined);
-    await sendToFeishu(`✅ 已发给 ${binding.title ?? binding.agentId}${images.length > 0 ? `（含 ${images.length} 张图片）` : ""}`);
+    await sendToFeishu(`✅ 已送达 ${binding.title ?? binding.agentId}${images.length > 0 ? `（含 ${images.length} 张图片）` : ""}`);
   } catch (error) {
-    await sendToFeishu(`❌ 转发失败：${error instanceof Error ? error.message : String(error)}`);
+    await sendToFeishu(`❌ 送达失败：${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -248,7 +253,7 @@ async function onFeishuMessage(data: {
     }
     if (text === "/status") {
       await sendToFeishu(
-        binding ? `当前绑定：${binding.title ?? binding.agentId}` : "未绑定任何会话，去桌面 Command Center 执行「接到飞书」",
+        binding ? `🔮 通灵中：${binding.title ?? binding.agentId}` : "尚未降灵。去桌面端 ⌘K 执行「通灵到飞书」",
       );
       return;
     }
@@ -257,12 +262,12 @@ async function onFeishuMessage(data: {
       return;
     }
     if (!binding || !paseoApi) {
-      await sendToFeishu("未绑定会话，消息未转发");
+      await sendToFeishu("尚未降灵，消息未送达");
       return;
     }
     await forwardToAgent(text, imageKeys, messageId);
   } catch (error) {
-    console.error("[feishu-relay] inbound handler crashed:", error);
+    console.error("[feishu-seance] inbound handler crashed:", error);
   }
 }
 
@@ -290,33 +295,33 @@ function ensureFeishu() {
 config = loadConfig();
 loadState();
 ensureFeishu();
-if (!config) log("no feishu.config.json found, running in dry-run mode; expected at", configPath);
+if (!config) log("no config found, running in dry-run mode; expected at", configPath);
 
 export function handleBind(
-  input: z.output<typeof relayBind.input>,
+  input: z.output<typeof seanceBind.input>,
   { paseo }: PluginHandlerContext,
-): z.input<typeof relayBind.output> {
+): z.input<typeof seanceBind.output> {
   paseoApi = paseo;
   binding = { agentId: input.agentId, workspaceId: input.workspaceId, title: input.title, boundAt: new Date().toISOString() };
   saveState();
   subscribeBoundAgent();
-  void sendToFeishu(`🔗 已绑定会话：${input.title ?? input.agentId}`);
+  void sendToFeishu(`🔮 已降灵：${input.title ?? input.agentId}`);
   return { ok: true, configured: config !== null };
 }
 
-export function handleUnbind(): z.input<typeof relayUnbind.output> {
+export function handleUnbind(): z.input<typeof seanceUnbind.output> {
   unsubscribeTimeline?.();
   unsubscribeTimeline = null;
   binding = null;
   saveState();
-  void sendToFeishu("🔌 已解绑");
+  void sendToFeishu("🕊️ 已归位");
   return { ok: true };
 }
 
 export function handleStatus(
-  _input: z.output<typeof relayStatus.input>,
+  _input: z.output<typeof seanceStatus.input>,
   { paseo }: PluginHandlerContext,
-): z.input<typeof relayStatus.output> {
+): z.input<typeof seanceStatus.output> {
   // status 查询也顺手复活 paseo 引用与订阅（daemon 重启后第一次 RPC 时恢复）
   if (!paseoApi) {
     paseoApi = paseo;
@@ -330,7 +335,7 @@ export function handleStatus(
   };
 }
 
-export function shutdownRelay() {
+export function shutdownSeance() {
   unsubscribeTimeline?.();
   unsubscribeTimeline = null;
   // lark WSClient 没有公开 stop；长连接和订阅会吊住事件循环，

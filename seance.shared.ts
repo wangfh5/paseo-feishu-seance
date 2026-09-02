@@ -7,22 +7,22 @@ export const bindingSchema = z.object({
   title: z.string().optional(),
   boundAt: z.string(),
 });
-export type RelayBinding = z.output<typeof bindingSchema>;
+export type SeanceBinding = z.output<typeof bindingSchema>;
 
-export const relayBind = defineRpc({
-  name: "relay.bind",
+export const seanceBind = defineRpc({
+  name: "seance.bind",
   input: z.object({ agentId: z.string(), workspaceId: z.string(), title: z.string().optional() }),
   output: z.object({ ok: z.boolean(), configured: z.boolean() }),
 });
 
-export const relayUnbind = defineRpc({
-  name: "relay.unbind",
+export const seanceUnbind = defineRpc({
+  name: "seance.unbind",
   input: z.object({}),
   output: z.object({ ok: z.boolean() }),
 });
 
-export const relayStatus = defineRpc({
-  name: "relay.status",
+export const seanceStatus = defineRpc({
+  name: "seance.status",
   input: z.object({}),
   output: z.object({
     configured: z.boolean(),
