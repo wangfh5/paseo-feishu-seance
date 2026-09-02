@@ -6,7 +6,7 @@ A [Paseo](https://paseo.sh) plugin that relays a live agent session to a Feishu 
 
 ## What it does
 
-- **Bind / unbind** the focused agent from a Command Center item ("接到飞书") or the plugin's agent panel.
+- **Bind / unbind** the focused agent from a Command Center item ("接到飞书"). A composer pill ("飞书已连接") appears only on the bound session — it is the occupancy indicator and one-tap unbind; unbound sessions carry no UI at all.
 - **Outbound**: assistant messages are accumulated per turn and pushed to Feishu as a Card JSON 2.0 markdown card when the turn completes. Permission requests and turn failures are pushed as notifications.
 - **Inbound**: plain text, images, and rich-text/image-mixed (`post`) messages sent to the bot are forwarded to the bound agent via `send(text, { images })`. `/status` reports the current binding.
 - **Dry-run mode**: without a Feishu config file, everything works except actual delivery — outbound messages go to the plugin log (`paseo plugin logs feishu-relay`).
@@ -57,14 +57,14 @@ Reload after changing the config: `paseo plugin reload feishu-relay`.
 
 ## Usage
 
-1. Open an agent tab, **⌘K** → "接到飞书 (Feishu relay)". The bot confirms the binding in Feishu.
+1. Open an agent tab, **⌘K** → "接到飞书 (Feishu relay)". The bot confirms the binding in Feishu, and a "飞书已连接" pill appears above that session's composer.
 2. Every completed turn is pushed to Feishu as a card.
 3. Reply in Feishu to steer the agent. Send `/status` to check the current binding.
-4. Unbind from the plugin panel or by rebinding another session.
+4. Tap the pill to unbind, or bind another session to move the relay.
 
 ## Known limitations
 
-- After a plugin reload or daemon restart, the timeline subscription is rebuilt lazily on the first RPC (the panel polls every 5 s; rebinding works too). Turns completed in that gap are not pushed.
+- After a plugin reload or daemon restart, the timeline subscription is rebuilt lazily on the first RPC (the bound session's pill syncs every 5 s; rebinding works too). Turns completed in that gap are not pushed.
 - Feishu's long connection is at-least-once: events not acked (e.g. while the plugin was wedged) are redelivered later. There is **no `message_id` dedup yet** — a stale message can arrive as a fresh prompt after recovery.
 - Permission requests are push-only; approval still requires the desktop client.
 - Tool calls are counted, not detailed; very long replies are not split.

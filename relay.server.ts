@@ -77,8 +77,10 @@ function loadConfig(): FeishuConfig | null {
 function loadState() {
   try {
     if (existsSync(statePath)) {
-      binding = JSON.parse(readFileSync(statePath, "utf8"));
-      log("restored binding:", binding);
+      const restored = JSON.parse(readFileSync(statePath, "utf8"));
+      // 旧版状态没有 workspaceId，直接作废让用户重绑一次
+      binding = restored?.agentId && restored?.workspaceId ? restored : null;
+      if (binding) log("restored binding:", binding);
     }
   } catch {
     binding = null;
@@ -295,7 +297,7 @@ export function handleBind(
   { paseo }: PluginHandlerContext,
 ): z.input<typeof relayBind.output> {
   paseoApi = paseo;
-  binding = { agentId: input.agentId, title: input.title, boundAt: new Date().toISOString() };
+  binding = { agentId: input.agentId, workspaceId: input.workspaceId, title: input.title, boundAt: new Date().toISOString() };
   saveState();
   subscribeBoundAgent();
   void sendToFeishu(`🔗 已绑定会话：${input.title ?? input.agentId}`);

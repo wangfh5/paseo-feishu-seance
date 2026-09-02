@@ -3,6 +3,7 @@ import { z } from "zod";
 
 export const bindingSchema = z.object({
   agentId: z.string(),
+  workspaceId: z.string(),
   title: z.string().optional(),
   boundAt: z.string(),
 });
@@ -10,7 +11,7 @@ export type RelayBinding = z.output<typeof bindingSchema>;
 
 export const relayBind = defineRpc({
   name: "relay.bind",
-  input: z.object({ agentId: z.string(), title: z.string().optional() }),
+  input: z.object({ agentId: z.string(), workspaceId: z.string(), title: z.string().optional() }),
   output: z.object({ ok: z.boolean(), configured: z.boolean() }),
 });
 
