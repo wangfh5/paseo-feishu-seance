@@ -21,9 +21,9 @@ export default function contribute(plugin: PluginContext) {
     icon: "Send",
     keywords: ["feishu", "relay", "飞书"],
     context: "agent",
-    async onSelect({ rpc, agent, openPanel }) {
+    async onSelect({ rpc, agent }) {
+      // 静默绑定：反馈走飞书里的「🔗 已绑定」确认消息，不打开面板
       await rpc(relayBind, { agentId: agent.id, title: agent.title ?? undefined });
-      openPanel("relay");
     },
   });
 
