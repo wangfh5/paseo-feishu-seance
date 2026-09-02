@@ -2,7 +2,7 @@ import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import type { PaseoAgentStream } from "@getpaseo/client";
+import type { PaseoAgentStream, PaseoAgentUpdate, PaseoWorkspaceUpdate } from "@getpaseo/client";
 import type { PluginHandlerContext } from "@getpaseo/plugin/server";
 import type { z } from "zod";
 import { seanceBind, seanceStatus, seanceUnbind, type SeanceBinding } from "./seance.shared";
@@ -54,6 +54,8 @@ let wsClient: LarkWSClient | null = null;
 let paseoApi: PaseoApi | null = null;
 let binding: SeanceBinding | null = null;
 let unsubscribeTimeline: (() => void) | null = null;
+let unsubscribeDirectory: (() => void) | null = null;
+let directoryWatchStarted = false;
 let forwardedTurns = 0;
 
 // 一个 turn 内 assistant_message 可能增量推送，按 messageId 聚合，turn 结束时一次性发出
@@ -161,12 +163,90 @@ function onStreamEvent(stream: PaseoAgentStream) {
   }
 }
 
+function boundAgentGone(update: PaseoAgentUpdate): boolean {
+  if (!binding) return false;
+  if (update.kind === "remove") return update.agentId === binding.agentId;
+  return update.agent.id === binding.agentId && Boolean(update.agent.archivedAt);
+}
+
+function boundWorkspaceGone(update: PaseoWorkspaceUpdate): boolean {
+  if (!binding) return false;
+  if (update.kind === "remove") return update.id === binding.workspaceId;
+  return update.workspace.id === binding.workspaceId && Boolean(update.workspace.archivingAt);
+}
+
+function releaseBinding(reason?: string): boolean {
+  if (!binding) return false;
+  unsubscribeTimeline?.();
+  unsubscribeTimeline = null;
+  binding = null;
+  saveState();
+  void sendToFeishu(reason ? `🕊️ 已归位：${reason}` : "🕊️ 已归位");
+  return true;
+}
+
 function subscribeBoundAgent() {
   unsubscribeTimeline?.();
   unsubscribeTimeline = null;
   if (!binding || !paseoApi) return;
   unsubscribeTimeline = paseoApi.agents.ref(binding.agentId).timeline.subscribe(onStreamEvent);
   log("subscribed timeline for agent", binding.agentId);
+}
+
+// agent_update / workspace_update 默认不推到会话，要先 list({ subscribe }) 打开目录流。
+function ensureSession(paseo: PaseoApi) {
+  paseoApi = paseo;
+  if (!unsubscribeDirectory) {
+    const unsubAgents = paseo.agents.subscribe((update: PaseoAgentUpdate) => {
+      if (!boundAgentGone(update)) return;
+      log("bound agent archived/removed, unbinding");
+      releaseBinding("会话已关闭");
+    });
+    const unsubWorkspaces = paseo.workspaces.subscribe((update: PaseoWorkspaceUpdate) => {
+      if (!boundWorkspaceGone(update)) return;
+      log("bound workspace archiving/removed, unbinding");
+      releaseBinding("会话已关闭");
+    });
+    unsubscribeDirectory = () => {
+      unsubAgents();
+      unsubWorkspaces();
+    };
+  }
+  if (directoryWatchStarted) return;
+  directoryWatchStarted = true;
+  void Promise.all([
+    paseo.agents.list({ subscribe: {}, scope: "active" }),
+    paseo.workspaces.list({ subscribe: {} }),
+  ])
+    .then(() => {
+      log("subscribed agent/workspace directories");
+    })
+    .catch((error) => {
+      directoryWatchStarted = false;
+      console.error("[feishu-seance] failed to subscribe directories:", error);
+    });
+}
+
+async function dropBindingIfGone() {
+  const current = binding;
+  if (!current || !paseoApi) return;
+  try {
+    const result = await paseoApi.agents.ref(current.agentId).refresh();
+    if (binding?.agentId !== current.agentId) return;
+    if (!result?.agent || result.agent.archivedAt) {
+      log("bound agent missing or archived on refresh, unbinding");
+      releaseBinding("会话已关闭");
+    }
+  } catch (error) {
+    if (binding?.agentId !== current.agentId) return;
+    const message = error instanceof Error ? error.message : String(error);
+    if (/not found|archived|unknown agent|no such/i.test(message)) {
+      log("bound agent refresh said gone, unbinding:", message);
+      releaseBinding("会话已关闭");
+    } else {
+      log("bound agent refresh failed:", message);
+    }
+  }
 }
 
 // 下载飞书消息里的图片，连同文本一起发给绑定的 agent
@@ -301,7 +381,7 @@ export function handleBind(
   input: z.output<typeof seanceBind.input>,
   { paseo }: PluginHandlerContext,
 ): z.input<typeof seanceBind.output> {
-  paseoApi = paseo;
+  ensureSession(paseo);
   binding = { agentId: input.agentId, workspaceId: input.workspaceId, title: input.title, boundAt: new Date().toISOString() };
   saveState();
   subscribeBoundAgent();
@@ -310,11 +390,7 @@ export function handleBind(
 }
 
 export function handleUnbind(): z.input<typeof seanceUnbind.output> {
-  unsubscribeTimeline?.();
-  unsubscribeTimeline = null;
-  binding = null;
-  saveState();
-  void sendToFeishu("🕊️ 已归位");
+  releaseBinding();
   return { ok: true };
 }
 
@@ -323,9 +399,11 @@ export function handleStatus(
   { paseo }: PluginHandlerContext,
 ): z.input<typeof seanceStatus.output> {
   // status 查询也顺手复活 paseo 引用与订阅（daemon 重启后第一次 RPC 时恢复）
-  if (!paseoApi) {
-    paseoApi = paseo;
+  const first = !paseoApi;
+  ensureSession(paseo);
+  if (first) {
     subscribeBoundAgent();
+    void dropBindingIfGone();
   }
   return {
     configured: config !== null,
@@ -338,6 +416,8 @@ export function handleStatus(
 export function shutdownSeance() {
   unsubscribeTimeline?.();
   unsubscribeTimeline = null;
+  unsubscribeDirectory?.();
+  unsubscribeDirectory = null;
   // lark WSClient 没有公开 stop；长连接和订阅会吊住事件循环，
   // 导致子进程退不出、daemon 卡在 "Stopping plugin"。cleanup 里直接退。
   wsClient = null;

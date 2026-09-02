@@ -49,10 +49,25 @@ export function contributeClient(client: PluginClientContext) {
     });
   };
 
+  // 桌面端关窗会 archive；client 侧目录流比插件子进程更稳，顺手触发归位。
+  const unsubAgents = client.paseo.agents.subscribe((update: {
+    kind: string;
+    agentId?: string;
+    agent?: { id: string; archivedAt?: string | null };
+  }) => {
+    if (!currentAgentId) return;
+    const gone =
+      (update.kind === "remove" && update.agentId === currentAgentId) ||
+      (update.kind === "upsert" && update.agent?.id === currentAgentId && Boolean(update.agent.archivedAt));
+    if (!gone) return;
+    void client.rpc(seanceUnbind, {}).then(() => void sync());
+  });
+
   void sync();
   const timer = setInterval(() => void sync(), 5000);
   return () => {
     clearInterval(timer);
+    unsubAgents();
     removePill?.();
   };
 }

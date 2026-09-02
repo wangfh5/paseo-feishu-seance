@@ -60,7 +60,7 @@ Reload after changing the config: `paseo plugin reload feishu-seance`.
 1. Open an agent tab, **⌘K** → "通灵到飞书 (Feishu séance)". The bot confirms in Feishu (🔮 已降灵), and the "通灵中" pill appears on that session.
 2. Every completed turn is pushed to Feishu as a card.
 3. Reply in Feishu to steer the agent. Send `/status` to check the current channel.
-4. Tap the pill to 归位, or channel another session to move the séance.
+4. Tap the pill to 归位, close/archive the channeled session, or channel another session to move the séance. Archiving the session (closing its window) also 归位 and the bot confirms in Feishu.
 
 ### Multiple daemons
 
@@ -68,7 +68,7 @@ You can install the plugin on several daemons with the same bot. Bindings are **
 
 ## Known limitations
 
-- After a plugin reload or daemon restart, the timeline subscription is rebuilt lazily on the first RPC (the pill's sync loop triggers it within 5 s; re-channeling works too). Turns completed in that gap are not pushed.
+- After a plugin reload or daemon restart, the timeline and archive watches are rebuilt lazily on the first RPC (the pill's sync loop triggers it within 5 s; re-channeling works too). Turns completed in that gap are not pushed.
 - Feishu's long connection is at-least-once: events not acked (e.g. while the plugin was wedged) are redelivered later. There is **no `message_id` dedup yet** — a stale message can arrive as a fresh prompt after recovery.
 - Permission requests are push-only; approval still requires the desktop client.
 - Tool calls are counted, not detailed; very long replies are not split.
