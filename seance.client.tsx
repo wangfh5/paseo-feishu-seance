@@ -1,6 +1,6 @@
 import { type PluginClientContext, type PluginComposerPillProps } from "@getpaseo/plugin";
 import React from "react";
-import { Image, Text } from "react-native";
+import { Image, Text, View } from "react-native";
 import { FEISHU_LOGO_DATA_URI } from "./feishu-logo.client";
 import { seanceStatus, seanceUnbind } from "./seance.shared";
 
@@ -10,12 +10,12 @@ import { seanceStatus, seanceUnbind } from "./seance.shared";
 // 品牌图标只能以图片形式内嵌）。
 function ChannelingPill({ theme }: PluginComposerPillProps) {
   return (
-    <>
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
       <Image source={{ uri: FEISHU_LOGO_DATA_URI }} style={{ width: 18, height: 14 }} />
-      <Text numberOfLines={1} style={{ color: theme.colors.accent, flexShrink: 1 }}>
+      <Text numberOfLines={1} style={{ color: theme.colors.accent, flexShrink: 1, lineHeight: 16 }}>
         通灵中
       </Text>
-    </>
+    </View>
   );
 }
 
