@@ -1,4 +1,3 @@
 {
-  "id": "feishu-relay",
-  "build": [["npm", "ci"]]
+  "id": "feishu-relay"
 }

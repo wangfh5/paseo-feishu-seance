@@ -33,13 +33,7 @@ The `chatId` of that private chat is not shown in the client UI. Bootstrap trick
 
 ## Install
 
-From Git (runs `npm ci` via the manifest `build` step — requires Paseo ≥ 0.7.2):
-
-```bash
-paseo plugin add <owner>/paseo-feishu-relay
-```
-
-For local development:
+Local directory install (works on Paseo 0.7.0):
 
 ```bash
 git clone <this repo> && cd paseo-feishu-relay
@@ -47,6 +41,8 @@ npm install
 npm run typecheck
 paseo plugin install /absolute/path/to/paseo-feishu-relay
 ```
+
+Git install (`paseo plugin add <owner>/paseo-feishu-relay`) needs the lark SDK installed in the plugin directory, which requires the manifest `build` step — supported only on Paseo ≥ 0.7.2, which is also the first version whose manifest schema accepts the `build` key. This repo deliberately omits `build` to stay installable on 0.7.0; when 0.7.2+ is the floor, add `"build": [["npm", "ci"]]` to `paseo-plugin.json` and Git installs become self-contained.
 
 Then create `~/.paseo/feishu-relay.config.json` from [feishu.config.example.json](feishu.config.example.json):
 
