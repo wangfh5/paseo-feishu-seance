@@ -1,0 +1,4 @@
+{
+  "id": "feishu-relay",
+  "build": [["npm", "ci"]]
+}

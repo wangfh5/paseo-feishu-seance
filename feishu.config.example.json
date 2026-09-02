@@ -1,0 +1,7 @@
+{
+  "appId": "cli_xxxxxxxx",
+  "appSecret": "xxxxxxxx",
+  "chatId": "oc_xxxxxxxx",
+  "allowedChatIds": ["oc_xxxxxxxx"],
+  "pluginDir": "/absolute/path/to/paseo-feishu-relay"
+}
