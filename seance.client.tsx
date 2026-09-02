@@ -1,16 +1,17 @@
-import { Icon, type PluginClientContext, type PluginComposerPillProps } from "@getpaseo/plugin";
+import { type PluginClientContext, type PluginComposerPillProps } from "@getpaseo/plugin";
 import React from "react";
-import { Text } from "react-native";
+import { Image, Text } from "react-native";
+import { FEISHU_LOGO_DATA_URI } from "./feishu-logo.client";
 import { seanceStatus, seanceUnbind } from "./seance.shared";
 
 // 极简设计：胶囊只挂在被降灵的那个会话上，作为「占用指示 + 点击归位」。
 // 未绑定的会话上没有任何视觉元素；降灵入口是 ⌘K。
-// 图标用 Lucide 的 Bird（飞鸟扣飞书 logo 的意象；插件 API 只支持 Lucide 图标名，
-// 真飞书 logo 需要内嵌图片资源，暂不做）。
+// 图标是内嵌 base64 的飞书纸飞机（插件的 Icon 组件只支持 Lucide 图标名，
+// 品牌图标只能以图片形式内嵌）。
 function ChannelingPill({ theme }: PluginComposerPillProps) {
   return (
     <>
-      <Icon name="Bird" size={14} color={theme.colors.accent} />
+      <Image source={{ uri: FEISHU_LOGO_DATA_URI }} style={{ width: 18, height: 14 }} />
       <Text numberOfLines={1} style={{ color: theme.colors.accent, flexShrink: 1 }}>
         通灵中
       </Text>
