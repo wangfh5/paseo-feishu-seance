@@ -64,11 +64,12 @@ Reload after changing the config: `paseo plugin reload feishu-seance`.
 
 ### Multiple daemons
 
-You can install the plugin on several daemons with the same bot. Bindings are **per-daemon**: there is no cross-daemon coordination, so discipline is the protocol — 归位 the current session on one machine before channeling a session on another, or both daemons will push into the same chat and inbound prompts will be handled by both. (Feishu's long connection broadcasts events to every connected instance, so a shared-registry design is possible — deliberately left out to keep the plugin simple and infra-free.)
+You can install the plugin on several daemons with the same bot. Feishu's long connection is **cluster mode, not broadcast**: when several clients share one app, each inbound event is delivered to a *random* one of them. The plugin therefore only holds a connection while channeled (降灵) — an idle daemon stays offline and can no longer swallow prompts meant for the channeled one. Discipline is still the protocol for the remaining race: 归位 the current session before channeling another daemon's session, or both hold connections and inbound prompts split randomly between them.
 
 ## Known limitations
 
 - After a plugin reload or daemon restart, the timeline and archive watches are rebuilt lazily on the first RPC (the pill's sync loop triggers it within 5 s; re-channeling works too). Turns completed in that gap are not pushed.
+- The bot is offline while nothing is channeled (the long connection is only held during a séance): messages sent then, including `/status`, get no reply.
 - Feishu's long connection is at-least-once: events not acked (e.g. while the plugin was wedged) are redelivered later. There is **no `message_id` dedup yet** — a stale message can arrive as a fresh prompt after recovery.
 - Permission requests are push-only; approval still requires the desktop client.
 - Tool calls are counted, not detailed; very long replies are not split.
@@ -78,7 +79,7 @@ You can install the plugin on several daemons with the same bot. Bindings are **
 - `@larksuiteoapi/node-sdk` is CJS and references `__dirname` at module top level; a static import crashes the ESM server bundle at load. It is lazy-loaded via `createRequire`, which is why the config needs `pluginDir` — the plugin subprocess runs with cwd `/`, has no plugin-dir env var, and `import.meta.url` is stripped by the bundler.
 - `assistant_message` stream events are provider-dependent: some providers send deltas, others cumulative text. Aggregation uses a prefix heuristic (new text starts with the buffered text → replace, else append).
 - Feishu inbound is not just `text`: quoted messages and image+text mixes arrive as `post` (rich-text JSON). Images are downloaded via `im.message.resource` and forwarded base64-encoded.
-- With a live WS client/subscription, the daemon's plugin stop can hang (`Stopping plugin` forever, queueing all later lifecycle commands). The contribution cleanup force-exits the subprocess.
+- With a live WS client/subscription, the daemon's plugin stop can hang (`Stopping plugin` forever, queueing all later lifecycle commands). The contribution cleanup closes the WS client (`WSClient.close()`, public since lark SDK 1.73) and force-exits the subprocess as a belt-and-braces fallback.
 - Plugin RPCs cannot be invoked from external scripts: the `@getpaseo/client` bundle validates outbound messages against an older embedded protocol schema that lacks `plugin.rpc.invoke.request`.
 
 Similar projects worth stealing ideas from: [opencode-feishu](https://github.com/NeverMore93/opencode-feishu) (CardKit 2.0 streaming cards, card-button approvals), [pi-feishu-lark](https://github.com/AX1202/pi-feishu-lark), [dsh-bridge](https://github.com/wenbin-wb/dsh-bridge).

@@ -181,6 +181,7 @@ function releaseBinding(reason?: string): boolean {
   unsubscribeTimeline = null;
   binding = null;
   saveState();
+  disconnectFeishuWs();
   void sendToFeishu(reason ? `🕊️ 已归位：${reason}` : "🕊️ 已归位");
   return true;
 }
@@ -351,7 +352,8 @@ async function onFeishuMessage(data: {
   }
 }
 
-function ensureFeishu() {
+// REST 客户端只发消息、不收事件，一直挂着无害
+function ensureLarkClient() {
   if (larkClient || !config) return;
   const LarkSdk = loadLark(config.pluginDir);
   larkClient = new LarkSdk.Client({
@@ -359,6 +361,14 @@ function ensureFeishu() {
     appSecret: config.appSecret,
     domain: LarkSdk.Domain.Feishu,
   });
+}
+
+// 飞书长连接是集群模式：同一 app 有多条连接时，事件随机投递给其中一条，不广播。
+// 因此只在降灵期间持有连接——未降灵的 daemon 若常挂连接，会把本应发给
+// 已降灵 daemon 的消息吞掉（两台机器共用同一 bot 时必然踩中）。
+function connectFeishuWs() {
+  if (wsClient || !config) return;
+  const LarkSdk = loadLark(config.pluginDir);
   const dispatcher = new LarkSdk.EventDispatcher({}).register({
     "im.message.receive_v1": onFeishuMessage,
   });
@@ -367,14 +377,29 @@ function ensureFeishu() {
     appSecret: config.appSecret,
     domain: LarkSdk.Domain.Feishu,
   });
-  wsClient.start({ eventDispatcher: dispatcher });
+  void wsClient.start({ eventDispatcher: dispatcher });
   log("feishu websocket client started");
 }
 
-// 模块加载时初始化一次（插件子进程随 contribute 一起求值）
+function disconnectFeishuWs() {
+  if (!wsClient) return;
+  // close() 是 1.73+ 才有的公开方法；防御一下旧版 SDK
+  const closable = wsClient as unknown as { close?: (params?: { force?: boolean }) => void };
+  try {
+    closable.close?.();
+    log("feishu websocket client closed");
+  } catch (error) {
+    console.error("[feishu-seance] feishu ws close failed:", error);
+  }
+  wsClient = null;
+}
+
+// 模块加载时初始化一次（插件子进程随 contribute 一起求值）。
+// 有持久化绑定（daemon/插件重启恢复）时立即重连长连接。
 config = loadConfig();
+ensureLarkClient();
 loadState();
-ensureFeishu();
+if (binding) connectFeishuWs();
 if (!config) log("no config found, running in dry-run mode; expected at", configPath);
 
 export function handleBind(
@@ -385,6 +410,7 @@ export function handleBind(
   binding = { agentId: input.agentId, workspaceId: input.workspaceId, title: input.title, boundAt: new Date().toISOString() };
   saveState();
   subscribeBoundAgent();
+  connectFeishuWs();
   void sendToFeishu(`🔮 已降灵：${input.title ?? input.agentId}`);
   return { ok: true, configured: config !== null };
 }
@@ -405,6 +431,8 @@ export function handleStatus(
     subscribeBoundAgent();
     void dropBindingIfGone();
   }
+  // 长连接只随降灵持有；绑定仍在而连接缺失（如启动时建连失败）时补连
+  if (binding) connectFeishuWs();
   return {
     configured: config !== null,
     configPath,
@@ -418,9 +446,9 @@ export function shutdownSeance() {
   unsubscribeTimeline = null;
   unsubscribeDirectory?.();
   unsubscribeDirectory = null;
-  // lark WSClient 没有公开 stop；长连接和订阅会吊住事件循环，
-  // 导致子进程退不出、daemon 卡在 "Stopping plugin"。cleanup 里直接退。
-  wsClient = null;
+  disconnectFeishuWs();
+  // lark 的定时器和订阅可能仍吊住事件循环，导致子进程退不出、
+  // daemon 卡在 "Stopping plugin"。cleanup 里兜底直接退。
   larkClient = null;
   setTimeout(() => process.exit(0), 200);
 }
