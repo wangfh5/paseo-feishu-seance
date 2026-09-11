@@ -2,10 +2,10 @@ import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import type { PaseoAgentStream, PaseoAgentUpdate, PaseoWorkspaceUpdate } from "@getpaseo/client";
+import type { PaseoAgentTimelineEvent, PaseoAgentUpdate, PaseoWorkspaceUpdate } from "@getpaseo/client";
+import type { RpcInput, RpcOutput } from "@getpaseo/plugin";
 import type { PluginHandlerContext } from "@getpaseo/plugin/server";
-import type { z } from "zod";
-import { seanceBind, seanceStatus, seanceUnbind, type SeanceBinding } from "./seance.shared";
+import { seanceBind, seanceStatus, seanceUnbind, type SeanceBinding } from "../shared/seance";
 
 type PaseoApi = PluginHandlerContext["paseo"];
 
@@ -127,7 +127,7 @@ async function sendToFeishu(text: string): Promise<void> {
   }
 }
 
-function onStreamEvent(stream: PaseoAgentStream) {
+function onStreamEvent(stream: PaseoAgentTimelineEvent) {
   const event = stream.event;
   switch (event.type) {
     case "timeline": {
@@ -403,9 +403,9 @@ if (binding) connectFeishuWs();
 if (!config) log("no config found, running in dry-run mode; expected at", configPath);
 
 export function handleBind(
-  input: z.output<typeof seanceBind.input>,
+  input: RpcInput<typeof seanceBind>,
   { paseo }: PluginHandlerContext,
-): z.input<typeof seanceBind.output> {
+): RpcOutput<typeof seanceBind> {
   ensureSession(paseo);
   binding = { agentId: input.agentId, workspaceId: input.workspaceId, title: input.title, boundAt: new Date().toISOString() };
   saveState();
@@ -415,15 +415,15 @@ export function handleBind(
   return { ok: true, configured: config !== null };
 }
 
-export function handleUnbind(): z.input<typeof seanceUnbind.output> {
+export function handleUnbind(): RpcOutput<typeof seanceUnbind> {
   releaseBinding();
   return { ok: true };
 }
 
 export function handleStatus(
-  _input: z.output<typeof seanceStatus.input>,
+  _input: RpcInput<typeof seanceStatus>,
   { paseo }: PluginHandlerContext,
-): z.input<typeof seanceStatus.output> {
+): RpcOutput<typeof seanceStatus> {
   // status 查询也顺手复活 paseo 引用与订阅（daemon 重启后第一次 RPC 时恢复）
   const first = !paseoApi;
   ensureSession(paseo);
