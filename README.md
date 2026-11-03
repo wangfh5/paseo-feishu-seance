@@ -50,7 +50,7 @@ The `chatId` of that private chat is not shown in the client UI. Bootstrap trick
 ## Install
 
 ```bash
-paseo plugin add git:wangfh5/paseo-feishu-seance
+paseo plugin add wangfh5/feishu-seance
 ```
 
 The install runs `npm ci --omit=dev --ignore-scripts` in the plugin checkout to fetch the Feishu SDK from the lockfile. To work on a local checkout instead:
