@@ -2,7 +2,7 @@
 
 **Hold a séance for a running [Paseo](https://paseo.sh) agent.** One keystroke channels the session you are watching into a Feishu (Lark) bot — the agent's spirit descends into the chat (降灵), and you keep the conversation going from your phone while away from your desk. Its replies arrive in Feishu as rendered Markdown cards; messages you send the bot possess the session as prompts. When you are back, one tap on the composer pill sends the spirit home (归位).
 
-> The Paseo plugin API is experimental. Developed and tested against Paseo daemon **0.7.0**.
+> The Paseo plugin API is experimental. Requires Paseo **0.14.0** or newer; tested on 0.14.0.
 
 ## What it does
 
@@ -29,20 +29,22 @@ You need a self-built (企业自建) Feishu app:
 5. Create a version and publish (may require tenant admin approval).
 6. In the Feishu client, open a private chat with the bot and send any message once.
 
-The `chatId` of that private chat is not shown in the client UI. Bootstrap trick: set `chatId` to a dummy value, reload the plugin, send the bot a message, and read the real `oc_...` id from `paseo plugin logs feishu-seance` (`rejected message from non-whitelisted chat: oc_...`).
+The `chatId` of that private chat is not shown in the client UI. Bootstrap trick: set `chatId` to a dummy value, reload the plugin, start a séance (the long connection is only held while channeled), send the bot a message, and read the real `oc_...` id from `paseo plugin logs feishu-seance` (`rejected message from non-whitelisted chat: oc_...`).
 
 ## Install
 
-Local directory install (works on Paseo 0.7.0):
+```bash
+paseo plugin add git:wangfh5/paseo-feishu-seance
+```
+
+The install runs `npm ci --omit=dev --ignore-scripts` in the plugin checkout to fetch the Feishu SDK from the lockfile. To work on a local checkout instead:
 
 ```bash
 git clone https://github.com/wangfh5/paseo-feishu-seance.git && cd paseo-feishu-seance
 npm install
 npm run typecheck
-paseo plugin install /absolute/path/to/paseo-feishu-seance
+paseo plugin add /absolute/path/to/paseo-feishu-seance
 ```
-
-Git install (`paseo plugin add wangfh5/paseo-feishu-seance`) needs the lark SDK installed in the plugin directory, which requires the manifest `build` step — supported only on Paseo ≥ 0.7.2, which is also the first version whose manifest schema accepts the `build` key. This repo deliberately omits `build` to stay installable on 0.7.0; when 0.7.2+ is the floor, add `"build": [["npm", "ci"]]` to `paseo-plugin.json` and Git installs become self-contained.
 
 Then create `~/.paseo/feishu-seance.config.json` from [feishu-seance.config.example.json](feishu-seance.config.example.json) (the legacy name `feishu-relay.config.json` is still read as a fallback):
 
@@ -51,7 +53,6 @@ Then create `~/.paseo/feishu-seance.config.json` from [feishu-seance.config.exam
 | `appId` / `appSecret` | Feishu app credentials |
 | `chatId` | Outbound target chat (your private chat with the bot) |
 | `allowedChatIds` | Inbound whitelist; defaults to `[chatId]` |
-| `pluginDir` | Absolute path of this repo — used to lazy-load the lark SDK (see dev notes) |
 
 Reload after changing the config: `paseo plugin reload feishu-seance`.
 
@@ -74,9 +75,10 @@ You can install the plugin on several daemons with the same bot. Feishu's long c
 - Permission requests are push-only; approval still requires the desktop client.
 - Tool calls are counted, not detailed; very long replies are not split.
 
-## Dev notes (battle scars, Paseo 0.7.0)
+## Dev notes (battle scars)
 
-- `@larksuiteoapi/node-sdk` is CJS and references `__dirname` at module top level; a static import crashes the ESM server bundle at load. It is lazy-loaded via `createRequire`, which is why the config needs `pluginDir` — the plugin subprocess runs with cwd `/`, has no plugin-dir env var, and `import.meta.url` is stripped by the bundler.
+- Paseo bundles the server entry with esbuild (including `@larksuiteoapi/node-sdk`) and evaluates it in a scope without `__dirname`. The SDK reads `__dirname` while loading to find its own `package.json` for the User-Agent, so the plugin sets a placeholder `__dirname` and then lazily `require`s the SDK. An old config's `pluginDir` field is now ignored.
+- Server code must not import `@getpaseo/client` at runtime, not even for types: Git installs skip devDependencies and the bundler fails to resolve it. Event types are derived from the plugin SDK instead.
 - `assistant_message` stream events are provider-dependent: some providers send deltas, others cumulative text. Aggregation uses a prefix heuristic (new text starts with the buffered text → replace, else append).
 - Feishu inbound is not just `text`: quoted messages and image+text mixes arrive as `post` (rich-text JSON). Images are downloaded via `im.message.resource` and forwarded base64-encoded.
 - With a live WS client/subscription, the daemon's plugin stop can hang (`Stopping plugin` forever, queueing all later lifecycle commands). The contribution cleanup closes the WS client (`WSClient.close()`, public since lark SDK 1.73) and force-exits the subprocess as a belt-and-braces fallback.

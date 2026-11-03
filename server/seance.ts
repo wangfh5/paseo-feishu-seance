@@ -1,26 +1,29 @@
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
-import { createRequire } from "node:module";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import type { PaseoAgentTimelineEvent, PaseoAgentUpdate, PaseoWorkspaceUpdate } from "@getpaseo/client";
 import type { RpcInput, RpcOutput } from "@getpaseo/plugin";
 import type { PluginHandlerContext } from "@getpaseo/plugin/server";
+import type * as Lark from "@larksuiteoapi/node-sdk";
 import { seanceBind, seanceStatus, seanceUnbind, type SeanceBinding } from "../shared/seance";
 
 type PaseoApi = PluginHandlerContext["paseo"];
+// 从插件 SDK 的订阅回调推出事件类型，避免运行时安装 @getpaseo/client
+type ListenerArg<F> = F extends (listener: (value: infer T) => void) => unknown ? T : never;
+type PaseoAgentTimelineEvent = ListenerArg<ReturnType<PaseoApi["agents"]["ref"]>["timeline"]["subscribe"]>;
+type PaseoAgentUpdate = ListenerArg<PaseoApi["agents"]["subscribe"]>;
+type PaseoWorkspaceUpdate = ListenerArg<PaseoApi["workspaces"]["subscribe"]>;
 
-// lark SDK 是 CJS 且顶层层引用 __dirname，静态 import 会让 ESM 打包在加载期炸掉，
-// 所以走 createRequire 在真正配置了飞书时才惰性加载。
-type LarkModule = typeof import("@larksuiteoapi/node-sdk");
-let Lark: LarkModule | null = null;
-function loadLark(pluginDir: string): LarkModule {
-  if (!Lark) {
-    // 插件子进程 cwd 是 "/"、env 里没有插件目录，import.meta.url 也被打包器抹掉，
-    // 只能靠配置里的 pluginDir 定位插件的 node_modules
-    const require = createRequire(join(pluginDir, "package.json"));
-    Lark = require("@larksuiteoapi/node-sdk") as LarkModule;
+// Paseo 把 lark SDK 一起打进服务端 bundle，并在没有 __dirname 的作用域里求值；
+// SDK 加载时会用 __dirname 找自己的 package.json 拼 User-Agent（找不到记为 unknown）。
+// 所以先放一个占位值，再惰性 require（esbuild 会把这个 require 一起打包）。
+type LarkModule = typeof Lark;
+let LarkSdk: LarkModule | null = null;
+function loadLark(): LarkModule {
+  if (!LarkSdk) {
+    (globalThis as { __dirname?: string }).__dirname ??= "/";
+    LarkSdk = require("@larksuiteoapi/node-sdk") as LarkModule;
   }
-  return Lark;
+  return LarkSdk;
 }
 
 interface FeishuConfig {
@@ -30,8 +33,6 @@ interface FeishuConfig {
   chatId: string;
   /** 只接受这些 chat_id 的入站消息；缺省时只接受 chatId 本身 */
   allowedChatIds?: string[];
-  /** 插件源码目录的绝对路径，用于加载 lark SDK */
-  pluginDir: string;
 }
 
 // 配置默认放 ~/.paseo/feishu-seance.config.json（插件子进程 cwd 是 "/"，不能用相对路径），
@@ -70,8 +71,8 @@ function loadConfig(): FeishuConfig | null {
   try {
     if (!existsSync(configPath)) return null;
     const raw = JSON.parse(readFileSync(configPath, "utf8"));
-    if (!raw.appId || !raw.appSecret || !raw.chatId || !raw.pluginDir) {
-      log("config missing appId/appSecret/chatId/pluginDir, dry-run mode");
+    if (!raw.appId || !raw.appSecret || !raw.chatId) {
+      log("config missing appId/appSecret/chatId, dry-run mode");
       return null;
     }
     return raw as FeishuConfig;
@@ -355,7 +356,7 @@ async function onFeishuMessage(data: {
 // REST 客户端只发消息、不收事件，一直挂着无害
 function ensureLarkClient() {
   if (larkClient || !config) return;
-  const LarkSdk = loadLark(config.pluginDir);
+  const LarkSdk = loadLark();
   larkClient = new LarkSdk.Client({
     appId: config.appId,
     appSecret: config.appSecret,
@@ -368,7 +369,7 @@ function ensureLarkClient() {
 // 已降灵 daemon 的消息吞掉（两台机器共用同一 bot 时必然踩中）。
 function connectFeishuWs() {
   if (wsClient || !config) return;
-  const LarkSdk = loadLark(config.pluginDir);
+  const LarkSdk = loadLark();
   const dispatcher = new LarkSdk.EventDispatcher({}).register({
     "im.message.receive_v1": onFeishuMessage,
   });

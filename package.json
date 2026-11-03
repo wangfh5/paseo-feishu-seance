@@ -1,6 +1,6 @@
 {
   "name": "paseo-feishu-seance",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Hold a séance for a running Paseo agent — channel it into a Feishu (Lark) bot and keep talking from your phone.",
   "license": "MIT",
   "scripts": {

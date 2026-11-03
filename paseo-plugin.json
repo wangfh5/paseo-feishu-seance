@@ -1,4 +1,13 @@
 {
   "id": "feishu-seance",
-  "requirements": { "paseo": ">=0.8.0" }
+  "name": "Feishu séance",
+  "description": "Channel a running Paseo agent into a Feishu (Lark) bot and keep talking to it from your phone.",
+  "translations": {
+    "zh-CN": {
+      "name": "飞书通灵",
+      "description": "把正在运行的 Paseo agent 接到飞书机器人上，在手机上继续和它对话。"
+    }
+  },
+  "build": [["npm", "ci", "--omit=dev", "--ignore-scripts"]],
+  "requirements": { "paseo": ">=0.14.0" }
 }
