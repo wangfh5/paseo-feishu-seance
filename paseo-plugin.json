@@ -8,6 +8,20 @@
       "description": "把正在运行的 Paseo agent 接到飞书机器人上，在手机上继续和它对话。"
     }
   },
-  "build": [["npm", "ci", "--omit=dev", "--ignore-scripts"]],
-  "requirements": { "paseo": ">=0.14.0" }
+  "media": [
+    "docs/images/feishu-chat.png",
+    "docs/images/composer-pill.png",
+    "docs/images/command-palette.png"
+  ],
+  "build": [
+    [
+      "npm",
+      "ci",
+      "--omit=dev",
+      "--ignore-scripts"
+    ]
+  ],
+  "requirements": {
+    "paseo": ">=0.14.0"
+  }
 }

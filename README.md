@@ -4,6 +4,22 @@
 
 > The Paseo plugin API is experimental. Requires Paseo **0.14.0** or newer; tested on 0.14.0.
 
+## In action
+
+**Start a séance from the command palette.** Open the agent you want to take with you and choose "通灵到飞书 (Feishu séance)" under ⌘K.
+
+<img src="docs/images/command-palette.png" alt="Paseo command palette with the 通灵到飞书 (Feishu séance) command in the feishu-seance group" width="560">
+
+**Keep talking from Feishu.** The bot announces each séance and 归位 in your private chat. Messages you send it go to the agent as prompts, and the agent's reply comes back as a Markdown card.
+
+![Feishu private chat: séance confirmations, a message sent from Feishu, its delivery receipt, and the agent's reply card](docs/images/feishu-chat.png)
+
+**See which session is channeled.** A "通灵中" pill sits above the channeled session's composer. Tap it to end the séance (归位).
+
+<img src="docs/images/composer-pill.png" alt="The 通灵中 composer pill with its 通灵中，点击归位 tooltip" width="480">
+
+Screenshots captured from the Paseo desktop app and Feishu on macOS.
+
 ## What it does
 
 - **降灵 / Channel**: **⌘K** → "通灵到飞书 (Feishu séance)" channels the focused agent. No window opens; the bot confirms in Feishu, and a "通灵中" pill appears above that session's composer. The pill shows up **only** on the channeled session — it is the occupancy indicator and one-tap 归位 (unbind). Unbound sessions carry no UI at all.
